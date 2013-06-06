@@ -44,23 +44,29 @@
 	
 	function Quizz(options) {
 		_instance	= this;
+		_instance.uri		= [];
 		_instance.topics	= [];
 		_instance.level		= [];
-		_instance.questions	= [];
+		_instance.question	= null;
+		_instance.test		= {
+			inProgress:	false
+		};
 		
 		_instance.selected	= {
 			topic:	'',
 			level:	'',
+			levelIndex:	0,
 			qIndex:	0,
 			qSkipped:	[],
-			payload:	[]
+			payload:	[],
+			totalQuestions: 0
 		};
 		
 		//	Elements / DOM
-		elm	={
+		elm	= {
 			page:			$('.page'),
 			topics_menu:	$('#topics_menu'),
-			level:		$('#level')
+			level:			$('#level')
 		};
 		
 		var 
@@ -83,6 +89,8 @@
 			t	= 0
 		;
 		
+		markup	+=	'<li class="first">Quizz </li>';
+				
 		//	create mark up for topic nav		
 		for( t in _instance.topics ) {
 			markup	+=	'<li>'
@@ -98,19 +106,39 @@
 	};
 	
 	Quizz.prototype.menu	= function(e) {
+		log( 'MENU' );
 		var
 			menu	= $(this),
-			topic
+			_i		= _instance,
+			topic,
+			proceed	= true;
 		;
 
 		e.preventDefault();
-		topic	= menu.attr('href').substring(1);
-		_instance.showLevels(topic);
+		if( _i.test.inProgress ) {
+			proceed	= confirm( 'Do you want to terminate this test?' );
+		}
+		
+		if( proceed ) {
+			_i.cleanUpAndDefault();
+			topic	= menu.attr('href').substring(1);
+			_i.showLevels(topic);
+			
+			_i.uri	= [];
+			_i.uri.push(topic);
+			
+			window.location.hash	= _i.uri.join('|');
+		}
 		//	DOM related magic happens here
 	};
 	
 	//	Shows levels available on screen
 	Quizz.prototype.showLevels	= function(t) {
+		var
+			_i	= _instance,	//	shortening variables
+			_s	=_i.selected	
+		;
+		log( 'LEVEL' );
 		var
 			topic,
 			level,
@@ -121,19 +149,25 @@
 		
 		//	hide page one
 		elm.page
-			.eq(0)
-			.addClass('dispnone');
+			.eq(0)				//	Hide Page 1 (Main Page)
+			.addClass( 'dispnone' );
 		
+		elm.page
+			.eq(1)				//	Show Page 2 (Level Page)
+			.removeClass( 'dispnone' );
+
+		
+
 		//	assign the selected topic
-		_instance.selected.topic	= t;
+		_s.topic	= t;
 		
 		for( topic in _instance.topics ) {			
 			if( topic === t ) {
-				llen	= _instance.topics[topic].length;
+				llen	= _i.topics[topic].length;
 
 				for( ; i < llen; ) {
-					level	= _instance.topics[topic][i].level;
-					if( _instance.topics[topic][i].questions.length > 0) {						
+					level	= _i.topics[topic][i].level;
+					if( _i.topics[topic][i].questions.length > 0) {						
 						markup	+= '<li>'
 								+ '<h2><a href="#'+level+'" class="level">' + level + '</a></h2>'
 								+ '<p>' + levelDesc[level] + '<p>'
@@ -159,27 +193,140 @@
 				e.preventDefault();
 				
 				//	Close the level's page and show the question page
-				elm.level.addClass( 'dispnone' );
+				elm.page
+					.eq(1)
+					.addClass( 'dispnone' );
 				//	Question time.
 				//	Start asking questions
-				_instance.selected.level	= $(this).attr('href').substring(1);
+				_s.level	= $(this).attr('href').substring(1);
 				
-				for( var i = 0; i < _instance.topics[ _instance.selected.topic ].length; i++ ) {
-					if(  _instance.topics[ _instance.selected.topic ][i].level === _instance.selected.level ) {
-						_instance.selected.payload	=_instance.topics[ _instance.selected.topic ][i].questions;
+				for( var i = 0; i < _i.topics[ _s.topic ].length; i++ ) {
+					if(  _i.topics[ _s.topic ][i].level === _s.level ) {
+						_s.levelIndex	= i;
+						_s.totalQuestions	= _i.topics[ _s.topic ][i].questions.length;
 						break;
 					}
 				}
+				log( 'Selected Level ' + _s.level );
+				log('START TEST');
 				
-				_instance.beginTest();
+				_i.prepareQuestionsInDOM();
+				
+				_i.uri.push( _s.level );
+				window.location.hash	= _i.uri.join('|');
 			});
 	};
 	
-	//	Begin test, a loop until test finishes
-	Quizz.prototype.beginTest	= function() {
+	//	Prepare Questions in DOM
+	Quizz.prototype.prepareQuestionsInDOM	= function() {
+		var
+			_i	= _instance,
+			_s	=_i.selected,
+			markup	= '',
+			i, ll, j, k,				// 	iterators
+			q							//	question
+		;
 		
+		i = ll	= j = k	= 0;
 		
-		_instance.selected.qIndex++;
+		for( ll = _s.totalQuestions ; 
+			i < ll; i++ ) {
+			q	= _i.topics[ _s.topic ][ _s.levelIndex ].questions[i];
+			
+			markup	+= 	'<div class="page question ' + ( i > 0 ? 'dispnone' : '') + '">'
+			
+					//	questions
+					+	'<h2>' + q.title + '</h2>'			
+					//	Choices
+					+	'<ul>';
+			for( var
+					al = q.anss.length;
+					j < al; j++ ) {
+				
+					markup	+=	'<li>'
+							+	''
+							+ q.anss[j] 
+							+ '</li>';
+			}
+			j	= 0;
+					
+			markup	+=	'</ul>'
+					//	Buttons
+					+	'<div class="buttons">'
+					+	'<a href="#prev" class="' + (i === 0 ? 'disable': '') + '">Prev</a>'
+					+	'<a href="#next" class="' + (i === (ll-1) ? 'disable': '')+ '">Next</a>'
+					+	'</div>'
+					//	EO Buttons
+					
+					+	'</div>';			
+		}		
+		
+		//	Mark if test in progress
+		_i.test.inProgress	= true;
+		
+		//	Add questions markup to page
+		elm.page
+			.eq(1)
+			.after( markup );
+		
+		//	Bind events
+		_i.question	= $( '.question' );
+		
+		_i.question
+			.find( '.buttons a' )
+			.unbind()
+			.bind( 'click', function(e) {
+				e.preventDefault();
+				
+				var
+					el	= $(this),
+					href
+				;
+				
+				href	= $(this).attr('href').substring(1);
+								
+				if( href === 'next' && !el.hasClass('disable') ) {
+					//	Show next question
+					_i.question
+						.eq( _s.qIndex++ )
+						.addClass( 'dispnone' );
+					
+					_i.question.eq( _s.qIndex )
+						.removeClass( 'dispnone' );
+					
+				} else if( href === 'prev' && !el.hasClass('disable') ) {
+					//	Show prev question
+					_i.question
+						.eq( _s.qIndex-- )
+						.addClass( 'dispnone' );
+				
+					_i.question
+						.eq( _s.qIndex )
+						.removeClass( 'dispnone' );
+				}
+			});
+	};
+	
+	Quizz.prototype.showQuestion	= function( qNo ) {
+		
+	};
+	
+	Quizz.prototype.cleanUpAndDefault	= function() {
+		var
+			_i	= _instance,
+			_s	= _i.selected			
+		;
+
+		if( _i.question !== null ) {
+			_i.question
+				.unbind()
+				.remove();
+			
+			_i.question = null;
+			_s.qIndex	= 0;
+			
+			
+		}
 	};
 	
 	//	Digest questions from question bank
